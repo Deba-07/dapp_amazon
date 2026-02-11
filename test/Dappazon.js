@@ -26,6 +26,7 @@ describe("Dappazon", () => {
     // Deploy contract
     const Dappazon = await ethers.getContractFactory("Dappazon");
     dappazon = await Dappazon.deploy();
+    await dappazon.waitForDeployment();
   });
 
   describe("Deployment", () => {
@@ -57,6 +58,72 @@ describe("Dappazon", () => {
 
     it("Emits List event", () => {
       expect(transaction).to.emit(dappazon, "List");
+    });
+  });
+
+  describe("Buying", () => {
+    let transaction;
+
+    beforeEach(async () => {
+      transaction = await dappazon
+        .connect(deployer)
+        .list(ID, NAME, CATAGORY, IMAGE, COST, RATING, STOCK);
+      await transaction.wait();
+
+      transaction = await dappazon.connect(buyer).buy(ID, { value: COST });
+      await transaction.wait();
+    });
+
+    it("Updates buyer's order count", async () => {
+      const result = await dappazon.orderCount(buyer.address);
+      expect(result).to.equal(1);
+    });
+
+    it("Adds the order", async () => {
+      const order = await dappazon.orders(buyer.address, 1);
+      expect(order.time).to.be.greaterThan(0);
+      expect(order.item.name).to.equal(NAME);
+    });
+
+    it("Updates the contract balance", async () => {
+      const address = await dappazon.getAddress();
+      const result = await ethers.provider.getBalance(address);
+      expect(result).to.equal(COST);
+    });
+
+    it("Emits buy event", () => {
+      expect(transaction).to.emit(dappazon, "Buy");
+    });
+  });
+
+  describe("withdrawing", () => {
+    let balanceBefore;
+
+    beforeEach(async () => {
+      let transaction = await dappazon
+        .connect(deployer)
+        .list(ID, NAME, CATAGORY, IMAGE, COST, RATING, STOCK);
+      await transaction.wait();
+
+      transaction = await dappazon.connect(buyer).buy(ID, { value: COST });
+      await transaction.wait();
+
+      balanceBefore = await ethers.provider.getBalance(deployer.address);
+
+      transaction = await dappazon.connect(deployer).withdraw();
+      await transaction.wait();
+    });
+
+    it("Updates the owner balance", async () => {
+      const balanceAfter = await ethers.provider.getBalance(deployer.address);
+      expect(balanceAfter).to.be.greaterThan(balanceBefore);
+    });
+
+    it("Updates the contract balance", async () => {
+      const result = await ethers.provider.getBalance(
+        await dappazon.getAddress(),
+      );
+      expect(result).to.equal(0);
     });
   });
 });
